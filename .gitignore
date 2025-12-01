@@ -1,0 +1,26 @@
+# .gitignore - DailyReport
+
+# Python 相关
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# 编辑器/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志和缓存
+*.log
+*.cache
+.pytest_cache/
