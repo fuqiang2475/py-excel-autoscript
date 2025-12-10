@@ -28,7 +28,7 @@ def parse_document(file_path):
     for line_num, line in enumerate(content, 1):
         try:
             # 处理24小时统计
-            if line.startswith('24小时') or line.startswith('硫酸高位槽'):
+            if line.startswith('24小时') or line.startswith('腐蚀性供料槽'):
                 key_part, val_part = split_key_value(line)
                 if key_part:
                     key = key_part.replace('24小时', '').strip()
@@ -38,7 +38,7 @@ def parse_document(file_path):
                 continue
 
             # 新班次开始
-            if line.startswith('脱盐水'):
+            if line.startswith('工艺水A'):
                 current_shift = create_shift_structure()
                 reports["daily"].append(current_shift)
                 shift_count = shift_count + 1
@@ -52,8 +52,8 @@ def parse_document(file_path):
 
             if current_shift:
                 # 处理化学品库存
-                if re.match(r'^(硫酸|液氨)库存', line):
-                    chemical_type = 'sulfuric' if '硫酸' in line else 'ammonia'
+                if re.match(r'^(腐蚀性|有毒性)库存', line):
+                    chemical_type = 'corrosive' if '腐蚀性' in line else 'toxicity'
                     current_chemical = chemical_type
                     key, val = extract_kv(line)
                     if key:
@@ -69,7 +69,37 @@ def parse_document(file_path):
                         current_shift[current_chemical]['tanks'][tank_id] = val
                     continue
 
-                # 处理使用/入库
+                # 处理生产数据
+                #print('++'+line)
+                if '使用量' in line:
+                    #print("--"+line)
+                    try:
+                        # 产品A
+                        if '产品A' in line:
+                            auxiliary_A = re.findall(r'产品A[^0-9]*(\d+)[^0-9]*批', line)
+                            if auxiliary_A:
+                                current_shift['reactions']['auxiliary_A']['count'] = int(auxiliary_A[0])
+
+                            raw_match = re.search(r'原料A使用量[：:]?\s*([\d.]+)', line.replace(' ', ''))
+                            if raw_match:
+                                current_shift['reactions']['auxiliary_A']['raw_volume'] = float(raw_match.group(1))
+
+                        # 产品B
+                        if '产品B' in line:
+                            auxiliary_B = re.findall(r'产品B[^0-9]*(\d+)[^0-9]*批', line)
+                            if auxiliary_B:
+                                current_shift['reactions']['auxiliary_B']['count'] = int(auxiliary_B[0])
+
+                            raw_match = re.search(r'原料A使用量[：:]?\s*([\d.]+)', line.replace(' ', ''))
+                            if raw_match:
+                                current_shift['reactions']['auxiliary_B']['raw_volume'] = float(raw_match.group(1))
+
+                    except Exception as e:
+                        print(f"第{line_num}行数据解析失败: {line}")
+                        print(f"错误详情: {e}")
+                    continue
+
+                    # 处理使用/入库
                 if any(k in line for k in ['使用', '入库']):
                     key, val = extract_kv(line)
                     if key and current_chemical:
@@ -78,47 +108,17 @@ def parse_document(file_path):
                     elif key:
                         current_shift['basic'][key] = val
                     continue
-
-                # 处理反应釜数据
-                if '釜' in line:
-                    try:
-                        # 硫脲法
-                        if '硫脲' in line:
-                            thiourea = re.findall(r'硫脲\s*(\d+)\s*釜', line)
-                            if thiourea:
-                                current_shift['reactions']['thiourea']['count'] = int(thiourea[0])
-
-                            acid_match = re.search(r'硫脲酸水量[：:]?\s*([\d.]+)', line.replace(' ', ''))
-                            if acid_match:
-                                current_shift['reactions']['thiourea']['acid_volume'] = float(acid_match.group(1))
-
-                        # 溴盐法
-                        if '溴盐' in line:
-                            bromide = re.findall(r'溴盐\s*(\d+)\s*釜', line)
-                            if bromide:
-                                current_shift['reactions']['bromide']['count'] = int(bromide[0])
-
-                            acid_match = re.search(r'溴盐酸水量[：:]?\s*([\d.]+)', line.replace(' ', ''))
-                            if acid_match:
-                                current_shift['reactions']['bromide']['acid_volume'] = float(acid_match.group(1))
-
-                        # 总酸水量
-                        total_match = re.search(r'共酸水量[：:]\s*([\d.]+)', line.replace(' ', ''))
-                        if total_match:
-                            current_shift['reactions']['total_acid'] = float(total_match.group(1))
-                    except Exception as e:
-                        print(f"第{line_num}行反应釜数据解析失败: {line}")
-                        print(f"错误详情: {e}")
-                    continue
-
                 # 处理吨桶数据
-                if '四效吨桶数量' in line:
+                if '废液B吨桶数量' in line:
                     try:
                         discharge = re.search(r'排(\d+)', line)
                         if discharge:
                             current_shift['tonnage']['discharge'] = int(discharge.group(1))
+                        else:
+                            current_shift['tonnage']['discharge'] = int(0)
                     except Exception as e:
-                        print(f" 第{line_num}行吨桶数据解析失败: {line}")
+                        print(f" 第{line_num}行数据解析失败: {line}")
+                        print(f"错误详情: {e}")
                     continue
 
                 # 其他基础数据
@@ -146,26 +146,24 @@ def create_shift_structure():
     """创建班次数据结构"""
     return {
         "basic": defaultdict(lambda: None),
-        "sulfuric": {
+        "corrosive": {
             "stock": None,
             "tanks": defaultdict(lambda: None),
             "usage": None,
             "inbound": 0
         },
-        "ammonia": {
+        "toxicity": {
             "stock": None,
             "tanks": defaultdict(lambda: None),
             "usage": None,
             "inbound": 0
         },
         "reactions": {
-            "thiourea": {"count": 0, "acid_volume": 0},
-            "bromide": {"count": 0, "acid_volume": 0},
-            "total_acid": 0.0
+            "auxiliary_A": {"count": 0, "raw_volume": 0},
+            "auxiliary_B": {"count": 0, "raw_volume": 0},
         },
         "tonnage": {
             "discharge": 0,
-            "inventory": 0
         }
     }
 

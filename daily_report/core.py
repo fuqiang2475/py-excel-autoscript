@@ -60,12 +60,13 @@ def process_daily_report(config):
         if config.get('verbose', False):
             print("解析报表信息...")
         report = parser.parse_document(config['input_docx'])
+        #print(report)
 
         # 6. 处理Excel文件
         if report["shift_count"] > 0:
             cal_num = 0
             if report["shift_count"] == 2:
-                if report['daily'][0]['basic']['仪表风'] <= report['daily'][1]['basic']['仪表风']:
+                if report['daily'][0]['basic']['动力风'] <= report['daily'][1]['basic']['动力风']:
                     cal_num = 1
                 excel_report = excel_ops.write_excel_report(report, cal_num)
             elif report["shift_count"] == 1:
@@ -76,7 +77,7 @@ def process_daily_report(config):
                 wb.close()
                 exit()
             ls_cell = ws.cell(row=ls_row, column=ls_col)
-            ls_cell.value = "=" + str(report['24hour']['硫酸高位槽总液位']) + "*0.057" if len(
+            ls_cell.value = "=" + str(report['24hour']['腐蚀性供料槽总液位']) + "*0.03" if len(
                 report['24hour']) > 1 else None
             if len(report['24hour']) < 1:
                 print("建议将24小时报表也复制到报表信息中")

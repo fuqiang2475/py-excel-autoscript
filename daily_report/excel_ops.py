@@ -491,15 +491,12 @@ def create_monthly_sheet(wb, output_path,today):
         pre_ws = wb[f"{two_days_prior.month}" + "月"]
         pre_nlg_col = find_target_column(pre_ws, 1, "AL", "AQ", "年累计")
         ylg_col = find_target_column(ws, 1, "AL", "AQ", "月累计")
-        # 找"浓缩比"
-        nsb_col = find_target_column(ws, 1, "A", "F", "项目明细")
 
         nlg_end_row = find_first_empty_row(ws, nlg_col)
-        nsb_row = find_target_row(ws, nsb_col, 1, 100, "浓缩比")
+
         jan_flag = (today.month == 1)
-        add_sheet_to_formula(ws, nlg_col, pre_nlg_col, ylg_col, 3, nsb_row - 1, f"{two_days_prior.month}" + "月", jan_flag)
-        add_sheet_to_formula(ws, nlg_col, pre_nlg_col, ylg_col, nsb_row + 1, nlg_end_row, f"{two_days_prior.month}" + "月",
-                             jan_flag)
+        add_sheet_to_formula(ws, nlg_col, pre_nlg_col, ylg_col, 3, nlg_end_row, f"{two_days_prior.month}" + "月", jan_flag)
+
         print("已修改年累计公式")
         print("已完成本月表单建立")
 
@@ -556,7 +553,7 @@ def daily_update(wb,ws,output_path,today):
 
 
     # 将表中,今日库存复制到昨日库存
-    row_start_range = find_target_row(ws, "A", 50, 100, "位号")
+    row_start_range = find_target_row(ws, "A", 1, 100, "设备名称")
     row_end_range = find_first_empty_row(ws, "A") + 1
     copy_row_list = [i for i in range(row_start_range + 1, row_end_range)]
     src_col = find_target_column(ws, row_start_range, "A", "P", "今日早晨")
@@ -567,7 +564,7 @@ def daily_update(wb,ws,output_path,today):
         copy_cell_range(ws, tgt_col, month_col, copy_row_list)
         print("原昨日7:30库存已覆盖上月末库存")
     copy_cell_range(ws, src_col, tgt_col, copy_row_list)
-    ls_row = find_target_row(ws, sb_col, row_start_range, row_start_range + 50, "硫酸高位槽")
+    ls_row = find_target_row(ws, sb_col, row_start_range, row_start_range + 50, "腐蚀性供料槽")
     ls_col = column_index_from_string(src_col)
 
     print("原今日7:30库存已覆盖昨日库存7:30")
@@ -578,54 +575,52 @@ def write_excel_report(report,idx):
     validator = LiquidLevelValidator()
     if report["shift_count"]==2:
 
-        lssyqk = "="+str(report['daily'][0]['sulfuric']['usage'])+"+"+str(report['daily'][1]['sulfuric']['usage'])
-        yasyqk = "="+str(report['daily'][0]['ammonia']['usage'])+"+"+str(report['daily'][1]['ammonia']['usage'])
+        lssyqk = "="+str(report['daily'][0]['corrosive']['usage'])+"+"+str(report['daily'][1]['corrosive']['usage'])
+        yasyqk = "="+str(report['daily'][0]['toxicity']['usage'])+"+"+str(report['daily'][1]['toxicity']['usage'])
         tdmypf = "="+str(report['daily'][0]['tonnage']['discharge'])+"+"+str(report['daily'][1]['tonnage']['discharge'])
-        sgtd = "="+str(report['daily'][0]['reactions']['bromide']['acid_volume'])+"+"+str(report['daily'][1]['reactions']['bromide']['acid_volume'])
-        sgfms= "="+str(report['daily'][0]['reactions']['thiourea']['acid_volume']) + "+"+str(report['daily'][1]['reactions']['thiourea'][
-            'acid_volume'])
+        sgtd = "="+str(report['daily'][0]['reactions']['auxiliary_B']['raw_volume'])+"+"+str(report['daily'][1]['reactions']['auxiliary_B']['raw_volume'])
+        sgfms= "="+str(report['daily'][0]['reactions']['auxiliary_A']['raw_volume']) + "+"+str(report['daily'][1]['reactions']['auxiliary_A'][
+            'raw_volume'])
+
     else:#只有一班
-        lssyqk = "="+str(report['daily'][0]['sulfuric']['usage'])
-        yasyqk = "="+str(report['daily'][0]['ammonia']['usage'])
+        lssyqk = "="+str(report['daily'][0]['corrosive']['usage'])
+        yasyqk = "="+str(report['daily'][0]['toxicity']['usage'])
         tdmypf = "="+str(report['daily'][0]['tonnage']['discharge'])
-        sgtd = "="+str(report['daily'][0]['reactions']['bromide']['acid_volume'])
-        sgfms= "="+str(report['daily'][0]['reactions']['thiourea']['acid_volume'])
+        sgtd = "="+str(report['daily'][0]['reactions']['auxiliary_B']['raw_volume'])
+        sgfms= "="+str(report['daily'][0]['reactions']['auxiliary_A']['raw_volume'])
     excel_report_left = {
-        "硫酸使用情况": lssyqk,
-        "液氨使用情况": yasyqk,
-        "天冬母液排放": tdmypf,
-        "四效蒸汽量":"="+str(report['24hour']['四效蒸汽平均流量'])+"*24" if len(report['24hour'])>1 else None,
-        "处理天冬母液量": report['24hour']['四效进料量'] if len(report['24hour'])>1 else None,
-        "凝液排放量": report['24hour']['凝液中和罐进料量'] if len(report['24hour'])>1 else None
+        "腐蚀性介质使用情况": lssyqk,
+        "有毒性介质使用情况": yasyqk,
+        "废液A转移量": tdmypf,
+        "废液B排放": tdmypf,
+        "废液B处理热源量":"="+str(report['24hour']['废液B处理热源流量'])+"*24" if len(report['24hour'])>1 else None,
     }
     excel_report_right = {
-        "V-64101": "/",
-        "V-64102液位": report['daily'][idx]['ammonia']['tanks']['二号罐'] ,
-        "V-64103液位": report['daily'][idx]['ammonia']['tanks']['三号罐'] ,
-        "V-64201液位": report['daily'][idx]['sulfuric']['tanks']['一号罐'] ,
-        "V-64202液位": report['daily'][idx]['sulfuric']['tanks']['二号罐'] ,
-        "V-65100进酸流量计数据": report['daily'][idx]['basic']['酸水累计接收'] ,
-        "顺酐（生产天冬用）": sgtd,
-        "顺酐（生产成品富马酸用）": sgfms,
-        "蒸汽流量计读数": float(report['daily'][idx]['basic']['1.0蒸汽'])/1000 ,
-        "工业水流量计读数": report['daily'][idx]['basic']['工业水'] ,
-        "脱盐水流量计读数": float(report['daily'][idx]['basic']['脱盐水'])/1000 ,
+        "有毒性一号罐": "/",
+        "有毒性二号罐液位": report['daily'][idx]['toxicity']['tanks']['二号罐'] ,
+        "有毒性三号罐液位": report['daily'][idx]['toxicity']['tanks']['三号罐'] ,
+        "腐蚀性一号罐液位": report['daily'][idx]['corrosive']['tanks']['一号罐'] ,
+        "腐蚀性二号罐液位": report['daily'][idx]['corrosive']['tanks']['二号罐'] ,
+        "原料A累计接收流量计数据": report['daily'][idx]['basic']['原料A使用流量'] ,
+        "原料A（生产产品B用）": sgtd,
+        "原料A（生产产品A用）": sgfms,
+        "热源流量计读数": float(report['daily'][idx]['basic']['热源']),
+        "工艺水B流量计读数": report['daily'][idx]['basic']['工艺水B'] ,
+        "工艺水A流量计读数": float(report['daily'][idx]['basic']['工艺水A']) ,
         "电表读数": report['daily'][idx]['basic']['用电量'] ,
-        "仪表风流量计读数": report['daily'][idx]['basic']['仪表风'] ,
-        "氮气流量计读数": report['daily'][idx]['basic']['氮气'] ,
-        "富马酸母液排放流量计读数": report['daily'][idx]['basic']['母液外排累积量'] ,
-        "V-64102库存吨位":validator.get_tonnage(validator.validate_input(report['daily'][idx]['ammonia']['tanks']['二号罐'])),
-        "V-64103库存吨位": validator.get_tonnage(
-            validator.validate_input(report['daily'][idx]['ammonia']['tanks']['三号罐']))
-
+        "动力风流量计读数": report['daily'][idx]['basic']['动力风'] ,
+        "保护气流量计读数": report['daily'][idx]['basic']['保护气'] ,
+        "废液A累积流量计读数": report['daily'][idx]['basic']['废液A转移累积量'] ,
+        "有毒性二号罐库存吨位":validator.get_tonnage(validator.validate_input(report['daily'][idx]['toxicity']['tanks']['二号罐'])),
+        "有毒性三号罐库存吨位": validator.get_tonnage(validator.validate_input(report['daily'][idx]['toxicity']['tanks']['三号罐']))
     }
     excel_report = [excel_report_left,excel_report_right]
     return excel_report
 
 def write_excel(wb,sheet_name,excel_report,new_col_yes,new_col_today):
     ws = wb[sheet_name]
-    today_list = find_target_column(ws,3,"A","BW","V-64101")
-    yes_list = find_target_column(ws,3,"A","BW","酸水使用情况")
+    today_list = find_target_column(ws,3,"A","BW","有毒性一号罐")
+    yes_list = find_target_column(ws,3,"A","BW","原料A使用情况")
 
     for key,val in excel_report[0].items():
         ws = update_excel_based_on_prefix(ws,yes_list,new_col_yes,3,key,val)
