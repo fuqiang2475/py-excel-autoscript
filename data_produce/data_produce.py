@@ -6,6 +6,20 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
+FIXED_FIELD_ORDER = [
+    "日期时间", "班次",
+    "生产A批数", "生产B批数", "原料A总消耗_吨",
+    "腐蚀性介质_吨", "有毒性介质_吨",
+    "产品A辅料_kg", "产品B辅料_kg",
+    "产品A_吨", "产品B_吨",
+    "总热源_吨", "废液B处理热源_吨", "工艺水B_吨", "工艺水A_吨","电量_kWh", "动力风_Nm³", "保护气_Nm³",
+    "雨水_吨", "废液A转移量_吨", "废液B排放_吨", "废渣_吨",
+    "有毒性二号罐液位_%", "有毒性三号罐液位_%", "腐蚀性一号罐液位_%", "腐蚀性二号罐液位_%",
+    "原料A使用流量_吨", "原料A（生产产品A用）_吨", "原料A（生产产品B用）_吨",
+    "热源流量计_吨", "工艺水B流量计_吨", "工艺水A流量计_吨","电表读数_kWh", "动力风流量计_Nm³", "保护气流量计_Nm³", "废液A累积流量计_吨",
+    "有毒性二号罐库存_吨", "有毒性三号罐库存_吨", "腐蚀性一号罐库存_吨", "腐蚀性二号罐库存_吨",
+    "有毒卸车", "腐蚀卸车"
+]
 class DailyReportGenerator:
     def __init__(self):
         np.random.seed(42)
@@ -551,41 +565,161 @@ class DailyReportGenerator:
             
         #print(len(tank_data['toxic_tank2']))
         return all_records
-    
+
     def save_to_excel(self, all_data):
-        """保存到Excel - 仅转置版"""
-        df = pd.DataFrame(all_data)
-        
+        """保存到Excel - 仅转置版（调整为固定顺序）"""
+        # 1. 转换为DataFrame（兼容传入的是字典/列表）
+        if isinstance(all_data, dict):
+            df = pd.DataFrame([all_data])
+        elif isinstance(all_data, list):
+            df = pd.DataFrame(all_data)
+        else:
+            df = all_data.copy()
+
+        # 2. 核心：筛选并调整列顺序为固定顺序（转置后行顺序即为此顺序）
+        # 过滤出DataFrame中存在的固定字段
+        valid_fields = [field for field in FIXED_FIELD_ORDER if field in df.columns]
+        # 补充DataFrame中存在但固定列表没有的字段（放在最后，可选）
+        extra_fields = [field for field in df.columns if field not in FIXED_FIELD_ORDER]
+        # 重新排列列顺序
+        df = df[valid_fields + extra_fields]
+
         with pd.ExcelWriter('化工日报表数据.xlsx', engine='openpyxl') as writer:
             # 1. 全部数据（转置）
-            df_transposed = df.T  # 转置数据
-            df_transposed.columns = [f"record{i+1}" for i in range(len(df_transposed.columns))]
+            df_transposed = df.T  # 转置数据（列→行，顺序已固定）
+            df_transposed.columns = [f"record{i + 1}" for i in range(len(df_transposed.columns))]
             df_transposed.to_excel(writer, sheet_name='全部数据', index=True)
-            
-            # 2. 按类型拆分的转置数据
+
+            # 2. 按类型拆分的转置数据（每个拆分后的数据都重复顺序调整逻辑）
             # 完整日数据
             full_data = df[df['班次'] == '全天']
             if not full_data.empty:
+                # 拆分后的数据仍需按固定顺序调整（避免筛选后列顺序变化）
+                full_data = full_data[valid_fields + extra_fields]
                 full_transposed = full_data.T
-                full_transposed.columns = [f"完整日记录{i+1}" for i in range(len(full_transposed.columns))]
+                full_transposed.columns = [f"完整日记录{i + 1}" for i in range(len(full_transposed.columns))]
                 full_transposed.to_excel(writer, sheet_name='完整日数据', index=True)
-            
+
             # 白班数据
             day_shift = df[df['班次'] == '白班']
             if not day_shift.empty:
+                day_shift = day_shift[valid_fields + extra_fields]
                 day_transposed = day_shift.T
-                day_transposed.columns = [f"白班记录{i+1}" for i in range(len(day_transposed.columns))]
+                day_transposed.columns = [f"白班记录{i + 1}" for i in range(len(day_transposed.columns))]
                 day_transposed.to_excel(writer, sheet_name='2月2日白班', index=True)
-            
+
             # 夜班数据
             night_shift = df[df['班次'] == '夜班']
             if not night_shift.empty:
+                night_shift = night_shift[valid_fields + extra_fields]
                 night_transposed = night_shift.T
-                night_transposed.columns = [f"夜班记录{i+1}" for i in range(len(night_transposed.columns))]
+                night_transposed.columns = [f"夜班记录{i + 1}" for i in range(len(night_transposed.columns))]
                 night_transposed.to_excel(writer, sheet_name='2月2日夜班', index=True)
 
-        
         print("数据已保存到 '化工日报表数据.xlsx'")
+
+    def save_day_shift_to_txt(self, all_data):
+        """将白班数据保存为TXT文件（匹配白班格式：删除24小时及腐蚀性总液位项）"""
+        # 筛选白班数据
+        day_shift_data = None
+        for record in all_data:
+            if record['班次'] == '白班':
+                day_shift_data = record
+                break
+
+        if not day_shift_data:
+            print("未找到白班数据，跳过TXT保存")
+            return
+
+        # 按白班格式拼接内容（删除24小时相关+腐蚀性供料槽总液位）
+        txt_content = f"""工艺水A：{day_shift_data['工艺水A流量计_吨']}
+工艺水B：{day_shift_data['工艺水B流量计_吨']}
+保护气：{day_shift_data['保护气流量计_Nm³']}
+动力风：{day_shift_data['动力风流量计_Nm³']}
+热源：{day_shift_data['热源流量计_吨']}
+废液A累积量：{day_shift_data['废液A累积流量计_吨']}
+用电量：{day_shift_data['电表读数_kWh']}
+原料A使用流量：{day_shift_data['原料A使用流量_吨']}
+腐蚀性库存：{day_shift_data['腐蚀性一号罐库存_吨'] + day_shift_data['腐蚀性二号罐库存_吨']:.1f}
+一号罐液位: {day_shift_data['腐蚀性一号罐液位_%']:.2f}%
+二号罐液位: {day_shift_data['腐蚀性二号罐液位_%']:.2f}%
+使用：{day_shift_data['腐蚀性介质_吨']:.2f}
+入库: {day_shift_data['腐蚀卸车']:.2f}
+有毒性库存: {day_shift_data['有毒性二号罐库存_吨'] + day_shift_data['有毒性三号罐库存_吨']:.2f}
+二号罐液位：{day_shift_data['有毒性二号罐液位_%']:.2f}%
+三号罐液位: {day_shift_data['有毒性三号罐液位_%']:.2f}%
+使用：{day_shift_data['有毒性介质_吨']:.2f}
+入库：{day_shift_data['有毒卸车']:.2f}
+本班共生产{day_shift_data['生产A批数'] + day_shift_data['生产B批数']}批，产品A{day_shift_data['生产A批数']}批，产品B{day_shift_data['生产B批数']}批，
+共进{day_shift_data['生产A批数'] + day_shift_data['生产B批数']}批原料A，
+产品A{day_shift_data['生产A批数']}批，原料A使用量：{day_shift_data['原料A（生产产品A用）_吨']:.2f}
+产品B{day_shift_data['生产B批数']}批，原料A使用量：{day_shift_data['原料A（生产产品B用）_吨']:.2f}
+共原料A量: {day_shift_data['原料A总消耗_吨']:.2f}
+废液B吨桶数量:本班排{int(day_shift_data['废液B排放_吨'] > 0)}，库存{np.random.choice([1, 2])}"""
+
+        # 保存为TXT文件（文件名包含日期）
+        date_str = day_shift_data['日期时间'].split(' ')[0]  # 提取日期（如2025-02-01）
+        txt_filename = f"{date_str}白班生产记录.txt"
+        with open(txt_filename, 'w', encoding='utf-8') as f:
+            f.write(txt_content)
+
+        print(f"白班数据已保存到 '{txt_filename}'")
+
+    def save_night_shift_to_txt(self, all_data):
+        """将夜班数据保存为TXT文件（匹配生产记录格式）"""
+        # 筛选夜班数据（最后一条记录为夜班）
+        night_shift_data = None
+        for record in all_data:
+            if record['班次'] == '夜班':
+                night_shift_data = record
+                break
+
+        if not night_shift_data:
+            print("未找到夜班数据，跳过TXT保存")
+            return
+
+        # 按目标格式拼接TXT内容
+        txt_content = f"""工艺水A：{night_shift_data['工艺水A流量计_吨']}
+工艺水B：{night_shift_data['工艺水B流量计_吨']}
+保护气：{night_shift_data['保护气流量计_Nm³']}
+动力风：{night_shift_data['动力风流量计_Nm³']}
+热源：{night_shift_data['热源流量计_吨']}
+废液A转移累积量：{night_shift_data['废液A累积流量计_吨']}
+用电量：{night_shift_data['电表读数_kWh']}
+原料A使用流量：{night_shift_data['原料A使用流量_吨']}
+腐蚀性库存：{night_shift_data['腐蚀性一号罐库存_吨'] + night_shift_data['腐蚀性二号罐库存_吨']:.2f}
+一号罐液位: {night_shift_data['腐蚀性一号罐液位_%']:.2f}%
+二号罐液位: {night_shift_data['腐蚀性二号罐液位_%']:.2f}%
+使用：{night_shift_data['腐蚀性介质_吨']:.2f}
+入库: {night_shift_data['腐蚀卸车']:.2f}
+有毒性库存: {night_shift_data['有毒性二号罐库存_吨'] + night_shift_data['有毒性三号罐库存_吨']:.2f}
+二号罐液位：{night_shift_data['有毒性二号罐液位_%']:.2f}%
+三号罐液位: {night_shift_data['有毒性三号罐液位_%']:.2f}%
+使用：{night_shift_data['有毒性介质_吨']:.2f}
+入库：{night_shift_data['有毒卸车']:.2f}
+本班共生产{night_shift_data['生产A批数'] + night_shift_data['生产B批数']}批，产品A{night_shift_data['生产A批数']}批，产品B{night_shift_data['生产B批数']}批，
+共进{night_shift_data['生产A批数'] + night_shift_data['生产B批数']}批原料A，
+产品A{night_shift_data['生产A批数']}批，原料A使用量：{night_shift_data['原料A（生产产品A用）_吨']:.2f}
+产品B{night_shift_data['生产B批数']}批，原料A使用量：{night_shift_data['原料A（生产产品B用）_吨']:.2f}
+共原料A量: {night_shift_data['原料A总消耗_吨']:.2f}
+废液B吨桶数量:本班排{int(night_shift_data['废液B排放_吨'] > 0)}，库存{np.random.choice([1, 2])}
+24小时废液A转移量：{night_shift_data['废液A转移量_吨']:.1f}吨
+24小时废液B处理热源流量：{np.round(night_shift_data['废液B处理热源_吨'] / 24, 2)}吨/小时
+腐蚀性供料槽总液位:70.00%"""
+
+        # 保存为TXT文件（文件名包含日期）
+        # 日期修正：提取原始日期后，将日份减1（如2025-02-02→2025-02-01）
+        original_date = datetime.strptime(night_shift_data['日期时间'].split(' ')[0], '%Y-%m-%d')
+        corrected_date = original_date - timedelta(days=1)  # 日份减1
+        date_str = corrected_date.strftime('%Y-%m-%d')  # 修正后日期（如2025-02-01）
+
+        txt_filename = f"{date_str}夜班生产记录.txt"
+        with open(txt_filename, 'w', encoding='utf-8') as f:
+            f.write(txt_content)
+
+        print(f"夜班数据已保存到 '{txt_filename}'")
+
+
 
 # 运行
 if __name__ == "__main__":
@@ -594,3 +728,8 @@ if __name__ == "__main__":
     
     # 保存
     generator.save_to_excel(all_data)
+    # 保存白班TXT
+    generator.save_day_shift_to_txt(all_data)
+    # 保存夜班TXT
+    generator.save_night_shift_to_txt(all_data)
+
