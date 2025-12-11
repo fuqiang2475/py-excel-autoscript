@@ -1,25 +1,41 @@
 ﻿@echo off
-chcp 65001 >nul
+:: 切换编码为UTF-8（屏蔽多余输出）
+chcp 65001 > nul
+:: 清屏
 cls
 echo 启动日报表处理系统...
 echo.
 
-REM 1. 检查是否在虚拟环境中
-python -c "import sys; sys.exit(0 if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix) else 1)"
-if errorlevel 1 (
-    echo 正在激活虚拟环境...
-    call venv\Scripts\activate.bat
-)
+:: 1. 激活虚拟环境（极简版：存在则激活，无任何多余判断）
+if exist "venv\Scripts\activate.bat" call venv\Scripts\activate.bat
 
-REM 2. 检查依赖
-python -c "import docx, openpyxl" 2>nul
-if errorlevel 1 (
+:: 2. 检查依赖并询问用户（完全去掉嵌套的复杂判断，改用goto跳转）
+python -c "import docx, openpyxl" > nul 2>&1
+if errorlevel 1 goto InstallDeps
+goto RunProgram
+
+:InstallDeps
+echo 缺少必要依赖包：python-docx、openpyxl
+echo.
+set "user_confirm=N"
+set /p user_confirm=是否自动安装依赖包？(Y/N，默认N)：
+if /i "%user_confirm%"=="Y" (
+    echo.
     echo 正在安装依赖包...
-    pip install -r requirements.txt
+    pip install python-docx openpyxl
+    echo.
+    echo 依赖包安装完成！
+    echo.
+) else (
+    echo.
+    echo 未安装依赖包，程序无法运行！
+    pause
+    exit /b 1
 )
 
-REM 3. 运行主程序
+:RunProgram
+:: 3. 运行主程序
 python run.py
 
-REM 4. 等待退出
+:: 4. 等待退出
 pause
